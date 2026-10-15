@@ -1,6 +1,7 @@
 from html.parser import HTMLParser
 from pathlib import Path
 import urllib.request
+from urllib.parse import urlsplit
 root=Path(__file__).parent/'dist'
 class Page(HTMLParser):
     def __init__(self,text):
@@ -17,7 +18,8 @@ for name,page in pages.items():
     assert page.h1==1,(name,'heading')
     for link in page.links:
         if link.startswith('https:'):continue
-        path,_,anchor=link.partition('#')
+        parsed=urlsplit(link)
+        path,anchor=parsed.path,parsed.fragment
         dest=root/path.lstrip('/') if path else root/name
         assert dest.is_file(),(name,link)
         if anchor:assert anchor in pages[dest.name].ids,(name,link)

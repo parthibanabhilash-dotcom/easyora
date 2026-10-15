@@ -28,6 +28,8 @@ The single administrator uses a salted scrypt password hash. HMAC-signed session
 
 Admin pages have no-store and noindex headers, anti-framing protection, and a restrictive content security policy. `scripts/provision.mjs` is an authenticated owner-only local utility: it sends environment secrets to the Vercel CLI through stdin and writes the private access file. It has already configured production. Rerunning rotates the signing key, so do not rerun casually.
 
+When using the setup utility from a fresh checkout, install the Vercel CLI separately, authenticate and link the existing project, and set `VERCEL_CLI_PATH` to that installation’s `dist/vc.js` file. The default path points to this workspace’s ignored tool cache. `.env.example` lists the required variable names without credentials.
+
 ## Verification
 
 `npm test` exercises real HTTP handlers against an explicit test-only memory adapter: session integrity, login, CSRF, upload/re-encoding, draft privacy, publishing, public image access, settings validation, concurrent edits, and removal. Production deployment verification also exercises a real private upload and draft, then removes the test project without ever publishing it.

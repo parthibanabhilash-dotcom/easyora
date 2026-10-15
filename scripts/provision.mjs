@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { writeFile, readFile } from 'node:fs/promises';
 import { hashPassword } from '../lib/security.mjs';
-const cli = new URL('../.cache/vercel-tools/node_modules/vercel/dist/vc.js', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+const cli = process.env.VERCEL_CLI_PATH || new URL('../.cache/vercel-tools/node_modules/vercel/dist/vc.js', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const email = process.argv[2];
 if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Pass the admin email address.');
 let password = randomBytes(20).toString('base64url');

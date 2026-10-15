@@ -4,15 +4,32 @@
   let viewer = null;
   function node(tag, className, text) { const item = document.createElement(tag); if (className) item.className = className; if (text !== undefined) item.textContent = text; return item; }
   function link(text, href) { const item = node('a', '', text); item.href = href; if (href.startsWith('https:')) { item.target = '_blank'; item.rel = 'noopener noreferrer'; } return item; }
+  function contactIcon(name) {
+    if (name === 'whatsapp') { const image = node('img', 'contact-brand-icon'); image.src = '/assets/brands/whatsapp.svg'; image.alt = ''; image.width = image.height = 18; image.loading = 'lazy'; image.decoding = 'async'; return image; }
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '1.6'); svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round'); svg.setAttribute('aria-hidden', 'true');
+    const paths = { email: ['M4 5h16v14H4z', 'm4 6 8 6 8-6'], phone: ['M8 3H5a2 2 0 0 0-2 2c0 9 7 16 16 16a2 2 0 0 0 2-2v-3l-5-2-2 3a13 13 0 0 1-7-7l3-2z'], location: ['M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z', 'M15 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z'] };
+    for (const d of paths[name]) { const path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', d); svg.append(path); }
+    return svg;
+  }
+  function contactItem(name, text, href) {
+    const item = href ? link('', href) : node('address'); item.className = 'contact-item' + (name === 'location' ? ' contact-location' : '');
+    item.append(contactIcon(name), node('span', '', text)); return item;
+  }
   function contactLinks(settings, container, social = true) {
     container.replaceChildren();
-    if (settings.email) container.append(link(settings.email, 'mailto:' + encodeURIComponent(settings.email)));
-    if (settings.phone) container.append(link(settings.phone, 'tel:' + settings.phone));
-    if (settings.whatsapp) container.append(link('WhatsApp ↗', 'https://wa.me/' + settings.whatsapp.replace(/\D/g, '')));
-    if (settings.location) container.append(node('span', 'contact-location', settings.location));
+    if (settings.email) container.append(contactItem('email', settings.email, 'mailto:' + encodeURIComponent(settings.email)));
+    if (settings.phone) container.append(contactItem('phone', settings.phone, 'tel:' + settings.phone));
+    if (settings.whatsapp) container.append(contactItem('whatsapp', 'WhatsApp', 'https://wa.me/' + settings.whatsapp.replace(/\D/g, '')));
+    if (settings.location) container.append(contactItem('location', settings.location));
     if (social) {
       const row = node('div', 'public-socials');
-      for (const key of ['instagram', 'facebook', 'youtube', 'linkedin']) if (settings[key]) row.append(link(key === 'linkedin' ? 'LinkedIn' : key[0].toUpperCase() + key.slice(1), settings[key]));
+      const labels = { instagram: 'Instagram', facebook: 'Facebook', youtube: 'YouTube', linkedin: 'LinkedIn' };
+      for (const key of ['instagram', 'facebook', 'youtube', 'linkedin']) if (settings[key]) {
+        const item = link('', settings[key]); item.className = 'social-icon-link'; item.setAttribute('aria-label', labels[key]); item.title = labels[key];
+        const image = node('img'); image.src = `/assets/brands/${key}.svg`; image.alt = ''; image.width = image.height = 20; image.loading = 'lazy'; image.decoding = 'async';
+        item.append(image); row.append(item);
+      }
       if (row.childNodes.length) container.append(row);
     }
     container.hidden = !container.childNodes.length;

@@ -48,6 +48,7 @@ BRANDS = {
     'canva': 'Canva', 'figma': 'Figma', 'youtube': 'YouTube', 'instagram': 'Instagram',
     'facebook': 'Facebook', 'googleads': 'Google Ads', 'meta': 'Meta',
     'wordpress': 'WordPress', 'shopify': 'Shopify', 'html5': 'HTML5',
+    'linkedin': 'LinkedIn', 'whatsapp': 'WhatsApp',
 }
 
 SHAPES = [

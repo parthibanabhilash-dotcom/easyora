@@ -6,6 +6,7 @@ root=Path(__file__).parent/'dist/assets/brands'
 root.mkdir(exist_ok=True)
 base='https://cdn.jsdelivr.net/npm/simple-icons@11.15.0/'
 colors={'adobephotoshop':'31A8FF','adobeillustrator':'DB7100','adobepremierepro':'7162B4','adobeaftereffects':'7162B4','canva':'00A7AC','figma':'F24E1E','youtube':'E62117','instagram':'C13584','facebook':'1877F2','googleads':'4285F4','meta':'0866FF','wordpress':'21759B','shopify':'6F9441','html5':'E34F26'}
+colors.update({'linkedin':'0A66C2','whatsapp':'259B58'})
 def fetch(name):
     data=urllib.request.urlopen(base+'icons/'+name+'.svg',timeout=20).read()
     assert b'<svg' in data

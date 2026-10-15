@@ -1,0 +1,5 @@
+.git
+.openai
+__pycache__
+*.tar
+*.tar.gz

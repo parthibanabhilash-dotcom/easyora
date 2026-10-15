@@ -22,6 +22,14 @@ The contact form generates a project brief and copies it to the clipboard, with 
 
 ## Hosting
 
+### Vercel
+
+Import `https://github.com/parthibanabhilash-dotcom/easyora` into Vercel. Keep the repository root as the Root Directory. The checked-in `vercel.json` selects the Other framework preset, skips build and install commands, and serves the committed `dist/` directory. Deploy the `main` branch. No environment variables are required.
+
+The project brief remains browser-only on Vercel. Vercel access protection is managed in the Vercel project settings; Sites owner-only access does not transfer to Vercel. The current metadata and privacy notice describe the Sites private preview and should be updated to the confirmed Vercel URL and access configuration before public launch.
+
+### Sites preview
+
 Sites owner-private deployment is configured in `.openai/hosting.json`. Private previews are marked `noindex` and block crawling. Update canonical URLs and social metadata, review privacy details, and replace those crawler restrictions when a public launch is authorized.
 
 No accounts, CMS, analytics, tracking cookies, backend, or notification delivery are included.

@@ -35,3 +35,15 @@ When using the setup utility from a fresh checkout, install the Vercel CLI separ
 `npm test` exercises real HTTP handlers against an explicit test-only memory adapter: session integrity, login, CSRF, upload/re-encoding, draft privacy, publishing, public image access, settings validation, concurrent edits, and removal. Production deployment verification also exercises a real private upload and draft, then removes the test project without ever publishing it.
 
 Public enquiries remain a browser-only brief builder. If email or WhatsApp is configured, visitors can choose to open their brief in that service; the website does not automatically send a message or save visitor briefs to a database.
+
+## Password changes and email recovery
+
+The Security tab changes the password after verifying the current password. Passwords need 16?256 characters. The active scrypt hash is stored only in private `easyora/security/account.json`, using conditional writes. `ADMIN_PASSWORD_HASH` bootstraps the first credential and is not the active password after an in-panel change. Do not delete the account document to perform routine resets. The local `admin-access.txt` initial password becomes obsolete when the owner changes it; keep the new password in a password manager.
+
+Password changes and code resets clear pending recovery challenges and invalidate all existing sessions, including private media access. Account credentials never appear in public content or content backups.
+
+Email recovery uses Resend. In Vercel ? easyora ? Settings ? Environment Variables add `RESEND_API_KEY` (a sending API key) and `RESET_EMAIL_FROM` (a sender permitted by Resend) to Production, then redeploy. Use a verified sending domain for production. The recipient is always `ADMIN_EMAIL`, never the editable public email or the browser-supplied address. Never paste keys into chat or commit them. Until these variables are configured, Forgot password explains setup is pending and disables code sending; sign-in and authenticated password changes remain available.
+
+Reset codes have six cryptographically random digits, expire after ten minutes, and can be used once. Only HMAC hashes are stored; five incorrect attempts lock the challenge. Requests have IP and global rate limits and a 60-second resend cooldown. A new code replaces the previous one. Successful requests have the same response for unknown email addresses. Resend failures return an honest error without exposing provider secrets. No password or code is logged. Only reset emails explicitly requested by the visitor are sent.
+
+Resend setup: create an account at https://resend.com, verify a sender/domain, create a sending API key, and set the two environment variables above. Never use a Gmail address as a verified sender unless your provider explicitly permits it. After activation, manually verify inbox delivery with the owner; automated tests use an injected mailer and do not send real mail.

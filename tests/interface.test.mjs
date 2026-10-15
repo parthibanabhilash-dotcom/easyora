@@ -7,6 +7,39 @@ import { initialContent, CATEGORIES } from '../lib/content.mjs';
 
 async function settle() { for (let i = 0; i < 8; i++) await new Promise(resolve => setTimeout(resolve, 0)); }
 
+test('password change and email-code recovery forms validate and clear secrets after success', async t => {
+  const dom = new JSDOM(await readFile('dist/admin.html', 'utf8'), { url: 'https://easyora.vercel.app/admin', runScripts: 'outside-only' }); t.after(() => dom.window.close());
+  const w = dom.window, d = w.document; w.structuredClone = structuredClone;
+  const calls = [];
+  w.fetch = async (_, options) => {
+    const data = options.body ? JSON.parse(options.body) : null; calls.push(data);
+    return { ok: true, json: async () => !data ? { configured: true, recoveryAvailable: true, authenticated: true, csrfToken: 'csrf', content: initialContent() } : { ok: true, message: 'If this is the admin email, a code will arrive shortly.' } };
+  };
+  w.eval(await readFile('dist/assets/admin.js', 'utf8')); await settle();
+  d.querySelector('[data-tab=security]').click(); assert.equal(d.getElementById('security-panel').hidden, false); assert.equal(d.getElementById('settings-panel').hidden, true);
+  const password = d.getElementById('password-form');
+  const submit = form => form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+  password.elements.currentPassword.value = 'original-long-password'; password.elements.newPassword.value = 'new-password-for-test'; password.elements.confirmPassword.value = 'different-password-test';
+  submit(password); await settle(); assert(!calls.some(x => x?.action === 'change-password')); assert.match(d.getElementById('admin-status').textContent, /do not match/);
+  password.elements.confirmPassword.value = 'new-password-for-test'; submit(password); await settle();
+  assert(calls.some(x => x?.action === 'change-password')); assert.equal(d.getElementById('dashboard').hidden, true); assert.equal(password.elements.currentPassword.value, '');
+  d.getElementById('forgot-password').click(); assert.equal(d.getElementById('recovery-panel').hidden, false);
+  const request = d.getElementById('request-reset-form'); request.elements.email.value = 'owner@example.com'; submit(request); await settle();
+  assert.equal(d.getElementById('reset-password-form').hidden, false); assert(calls.some(x => x?.action === 'request-reset' && x.email === 'owner@example.com'));
+  const reset = d.getElementById('reset-password-form'); reset.elements.code.value = '123456'; reset.elements.newPassword.value = 'another-long-password'; reset.elements.confirmPassword.value = 'another-long-password'; submit(reset); await settle();
+  assert(calls.some(x => x?.action === 'reset-password' && x.code === '123456' && x.email === 'owner@example.com'));
+  assert.equal(reset.elements.code.value, ''); assert.equal(reset.elements.newPassword.value, ''); assert.equal(d.getElementById('login-form').hidden, false);
+});
+
+test('forgot password explains unavailable email setup without pretending to send a code', async t => {
+  const dom = new JSDOM(await readFile('dist/admin.html', 'utf8'), { url: 'https://easyora.vercel.app/admin', runScripts: 'outside-only' }); t.after(() => dom.window.close());
+  const w = dom.window, d = w.document;
+  w.fetch = async () => ({ ok: true, json: async () => ({ configured: true, authenticated: false, recoveryAvailable: false }) });
+  w.eval(await readFile('dist/assets/admin.js', 'utf8')); await settle(); d.getElementById('forgot-password').click();
+  assert.equal(d.getElementById('recovery-unavailable').hidden, false); assert.equal(d.getElementById('send-reset').disabled, true);
+  d.getElementById('back-to-login').click(); assert.equal(d.getElementById('login-form').hidden, false);
+});
+
 test('admin interface edits and saves a draft, restores list, and keeps unsaved settings after reauthentication', async t => {
   const html = await readFile('dist/admin.html', 'utf8');
   const dom = new JSDOM(html, { url: 'https://easyora.vercel.app/admin', runScripts: 'outside-only' }); t.after(() => dom.window.close());

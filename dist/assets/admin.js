@@ -1,6 +1,6 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const state = { csrf: '', content: null, images: [], logoId: null, settingsBase: null, dirty: false, busy: false, configured: false, reauth: false };
+  const state = { csrf: '', content: null, images: [], logoId: null, settingsBase: null, dirty: false, busy: false, configured: false, reauth: false, recoveryAvailable: false, resetEmail: '' };
   function message(text, error = false) { $('admin-status').textContent = text; $('admin-status').classList.toggle('error', error); }
   function dirty(value = true) { state.dirty = value; }
   function busy(value) {
@@ -8,6 +8,7 @@
     document.querySelectorAll('button').forEach(button => { button.disabled = value; });
     document.querySelectorAll('input[type=file]').forEach(input => { input.disabled = value; });
     $('login-submit').disabled = value || !state.configured;
+    $('send-reset').disabled = value || !state.recoveryAvailable;
   }
   async function api(data) {
     const controller = new AbortController();
@@ -16,7 +17,7 @@
       const response = await fetch('/api/admin', { method: data ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store', headers: data ? { 'Content-Type': 'application/json', 'X-CSRF-Token': state.csrf } : {}, ...(data ? { body: JSON.stringify(data) } : {}), signal: controller.signal });
       const result = await response.json();
       if (!response.ok) {
-        if (response.status === 401 && data && data.action !== 'login') { state.reauth = true; $('login-panel').hidden = false; $('dashboard').hidden = true; $('logout').hidden = true; }
+        if (response.status === 401 && data && !['login', 'request-reset', 'reset-password'].includes(data.action)) { state.reauth = true; $('login-panel').hidden = false; $('dashboard').hidden = true; $('logout').hidden = true; }
         const error = new Error(result.error || 'Something went wrong. Please try again.'); error.status = response.status; error.conflicts = result.conflicts; throw error;
       }
       return result;
@@ -27,7 +28,9 @@
   function button(text, handler, className = 'quiet') { const node = element('button', className, text); node.type = 'button'; node.addEventListener('click', handler); return node; }
   function allowDiscard() { return !state.dirty || window.confirm('Discard your unsaved changes?'); }
   function showTab(name) {
+    if (name !== 'security') $('password-form').reset();
     $('works-panel').hidden = name !== 'works'; $('settings-panel').hidden = name !== 'settings';
+    $('security-panel').hidden = name !== 'security';
     document.querySelectorAll('[data-tab]').forEach(node => { if (node.dataset.tab === name) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current'); });
   }
   function renderWorks() {
@@ -57,6 +60,8 @@
     state.csrf = result.csrfToken; state.content = result.content;
     $('login-panel').hidden = true; $('dashboard').hidden = false; $('logout').hidden = false;
     $('login-form').reset();
+    $('recovery-panel').hidden = true; $('login-form').hidden = false; $('forgot-password').hidden = false;
+    $('account-recovery-status').textContent = state.recoveryAvailable ? 'Reset codes are sent to your admin email.' : 'Email recovery is awaiting Resend setup in Vercel.';
     if (state.reauth) { state.reauth = false; renderWorks(); message('Signed in again. Your unsaved changes are still here; review them before saving.'); return; }
     $('editor-panel').hidden = true; $('work-list').hidden = false; showTab('works'); renderWorks(); fillSettings(); dirty(false); message('');
   }
@@ -143,6 +148,48 @@
   }
   async function upload(file) { return api({ action: 'upload', data: await optimize(file) }); }
 
+  function backToLogin() {
+    $('recovery-panel').hidden = true; $('login-form').hidden = false; $('forgot-password').hidden = false;
+    $('request-reset-form').reset(); $('reset-password-form').reset(); $('reset-password-form').hidden = true; state.resetEmail = '';
+  }
+  function passwordSignedOut(text) {
+    state.content = null; state.csrf = ''; state.reauth = false; state.images = []; state.logoId = null; state.settingsBase = null; dirty(false);
+    $('dashboard').hidden = true; $('logout').hidden = true; $('login-panel').hidden = false;
+    for (const id of ['login-form', 'password-form', 'settings-form', 'work-form']) $(id).reset();
+    $('work-list').replaceChildren(); $('image-list').replaceChildren(); backToLogin(); message(text); $('login-form').elements.namedItem('email').focus();
+  }
+  $('forgot-password').addEventListener('click', () => {
+    $('request-reset-form').elements.namedItem('email').value = $('login-form').elements.namedItem('email').value;
+    $('login-form').reset(); $('login-form').hidden = true; $('forgot-password').hidden = true; $('recovery-panel').hidden = false;
+    $('recovery-unavailable').hidden = state.recoveryAvailable; message(''); $('request-reset-form').elements.namedItem('email').focus();
+  });
+  $('back-to-login').addEventListener('click', () => { if (!state.busy) { backToLogin(); message(''); } });
+  $('request-reset-form').addEventListener('submit', async event => {
+    event.preventDefault(); if (state.busy || !state.recoveryAvailable || !event.target.reportValidity()) return;
+    busy(true); message('Requesting your reset code...');
+    try {
+      const email = new FormData(event.target).get('email');
+      const result = await api({ action: 'request-reset', email }); state.resetEmail = email;
+      $('reset-password-form').hidden = false; $('reset-password-form').reset(); message(result.message); $('reset-password-form').elements.namedItem('code').focus();
+    } catch (error) { message(error.message, true); } finally { busy(false); }
+  });
+  $('reset-password-form').addEventListener('submit', async event => {
+    event.preventDefault(); if (state.busy || !event.target.reportValidity()) return;
+    const data = new FormData(event.target);
+    if (data.get('newPassword') !== data.get('confirmPassword')) { message('The new passwords do not match.', true); return; }
+    busy(true);
+    try { await api({ action: 'reset-password', email: state.resetEmail, code: data.get('code'), newPassword: data.get('newPassword'), confirmPassword: data.get('confirmPassword') }); passwordSignedOut('Password reset. Sign in with your new password.'); }
+    catch (error) { message(error.message, true); } finally { busy(false); }
+  });
+  $('password-form').addEventListener('submit', async event => {
+    event.preventDefault(); if (state.busy || !event.target.reportValidity()) return;
+    const data = new FormData(event.target);
+    if (data.get('newPassword') !== data.get('confirmPassword')) { message('The new passwords do not match.', true); return; }
+    busy(true);
+    try { await api({ action: 'change-password', currentPassword: data.get('currentPassword'), newPassword: data.get('newPassword'), confirmPassword: data.get('confirmPassword') }); passwordSignedOut('Password changed. All sessions are signed out. Sign in with your new password.'); }
+    catch (error) { message(error.message, true); } finally { busy(false); $('password-form').reset(); }
+  });
+
   $('login-form').addEventListener('submit', async event => {
     event.preventDefault(); if (state.busy || !state.configured) return;
     busy(true); message('Signing in…');
@@ -152,6 +199,7 @@
   });
   $('logout').addEventListener('click', async () => {
     if (!allowDiscard()) return; busy(true);
+    $('password-form').reset();
     try { await api({ action: 'logout' }); state.content = null; state.csrf = ''; dirty(false); $('dashboard').hidden = true; $('logout').hidden = true; $('login-panel').hidden = false; $('work-form').reset(); $('settings-form').reset(); $('image-list').replaceChildren(); $('work-list').replaceChildren(); state.images = []; message('Signed out.'); }
     catch (error) { message(error.message, true); } finally { busy(false); }
   });
@@ -189,5 +237,5 @@
     await update({ action: 'save-settings', settings: readSettings() }, 'Contact details and logo saved. Your website is up to date.');
   });
   window.addEventListener('beforeunload', event => { if (state.dirty || state.busy) { event.preventDefault(); event.returnValue = ''; } });
-  api().then(result => { state.configured = result.configured; $('setup-message').hidden = result.configured; if (result.authenticated) signedIn(result); else message(result.configured ? '' : 'Admin setup is required before you can sign in.'); }).catch(error => message(error.message, true)).finally(() => busy(false));
+  api().then(result => { state.configured = result.configured; state.recoveryAvailable = Boolean(result.recoveryAvailable); $('setup-message').hidden = result.configured; if (result.authenticated) signedIn(result); else message(result.configured ? '' : 'Admin setup is required before you can sign in.'); }).catch(error => message(error.message, true)).finally(() => busy(false));
 })();

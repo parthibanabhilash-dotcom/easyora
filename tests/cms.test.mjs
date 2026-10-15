@@ -11,7 +11,9 @@ const PASSWORD = 'a-long-test-password-only';
 const env = { BLOB_READ_WRITE_TOKEN: 'test-only-token', ADMIN_EMAIL: 'owner@example.com', ADMIN_PASSWORD_HASH: hashPassword(PASSWORD), SESSION_SECRET: 'test-secret-only-'.repeat(4), SITE_ORIGIN: 'https://easyora.vercel.app' };
 
 class MemoryStore {
-  constructor() { this.document = null; this.etag = 0; this.images = new Map(); this.attempts = new Map(); this.backups = []; }
+  constructor() { this.document = null; this.etag = 0; this.images = new Map(); this.attempts = new Map(); this.backups = []; this.json = new Map(); }
+  async readJson(path) { return structuredClone(this.json.get(path) || null); }
+  async writeJson(path, value, etag) { const current = this.json.get(path); if (current?.etag !== etag) throw new HttpError(409, 'Conflict'); this.json.set(path, { value: structuredClone(value), etag: randomUUID() }); }
   async readContent() { return this.document ? { value: structuredClone(this.document), etag: String(this.etag) } : null; }
   async writeContent(value, etag) { if ((this.document && etag !== String(this.etag)) || (!this.document && etag)) throw new HttpError(409, 'Conflict'); this.document = structuredClone(value); this.etag++; }
   async backup(value) { this.backups.push(structuredClone(value)); }

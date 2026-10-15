@@ -1,10 +1,12 @@
 # EasyOra website
 
-Static, responsive company website using the supplied EasyOra ribbon logo. The deployable site is in `dist/`. No dependencies or build step are required to serve it.
+Responsive company website with a private admin panel for portfolio projects, image uploads, public contact details, and logo changes. The public site is predominantly static; administration uses Vercel Node functions and private Vercel Blob storage. See [admin documentation](docs/admin.md) for architecture and security details.
+
+Website: https://easyora.vercel.app · Admin: https://easyora.vercel.app/admin. Owner login details are delivered in the local, Git-ignored `admin-access.txt` file.
 
 ## Preview
 
-Run `python -m http.server 4173 --directory dist` and visit `http://localhost:4173`.
+Run `npm ci`, `python build.py`, then `npm run dev` and visit `http://127.0.0.1:4173`. Local admin functionality requires development environment variables; it does not substitute browser storage for durable storage.
 
 ## Editing
 
@@ -20,7 +22,7 @@ Software and social-platform SVGs are served locally from `dist/assets/brands/`;
 
 ## Verification
 
-With the local server running, run `python check.py`, `node check-interactions.cjs`, and `node check-motion.cjs`. Browser visual verification is a separate manual step.
+Run `npm test`, `node check-interactions.cjs`, and `node check-motion.cjs`; with the local server running, also run `python check.py`. Browser visual verification is a separate manual step.
 
 ## Design and performance
 
@@ -38,7 +40,7 @@ The contact form generates a project brief and copies it to the clipboard, with 
 
 ### Vercel
 
-Import `https://github.com/parthibanabhilash-dotcom/easyora` into Vercel. Keep the repository root as the Root Directory. The checked-in `vercel.json` selects the Other framework preset, skips build and install commands, and serves the committed `dist/` directory. Deploy the `main` branch. No environment variables are required.
+The existing Vercel project is connected to `https://github.com/parthibanabhilash-dotcom/easyora`. Keep the repository root as the Root Directory. `vercel.json` selects the Other framework preset, installs locked Node dependencies with `npm ci`, serves the committed `dist/` directory, and deploys Node API functions. Deploy `main`. Production CMS environment variables are described in [admin documentation](docs/admin.md) and have been configured in Vercel.
 
 The project brief remains browser-only on Vercel. Vercel access protection is managed in the Vercel project settings; Sites owner-only access does not transfer to Vercel. Metadata and the hosting notice refer to the confirmed Vercel origin. Crawler restrictions remain in place until search indexing is explicitly requested.
 
@@ -46,4 +48,4 @@ The project brief remains browser-only on Vercel. Vercel access protection is ma
 
 Sites owner-private deployment is configured in `.openai/hosting.json`. Private previews are marked `noindex` and block crawling. Update canonical URLs and social metadata, review privacy details, and replace those crawler restrictions when a public launch is authorized.
 
-No accounts, CMS, analytics, tracking cookies, backend, or notification delivery are included.
+The owner admin account uses a Secure, HttpOnly session cookie. No visitor accounts, analytics, advertising trackers, or automatic notification delivery are included. Project briefs remain browser-only; portfolio, contact, and logo management use the backend.

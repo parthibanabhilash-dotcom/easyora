@@ -3,3 +3,10 @@
 __pycache__
 *.tar
 *.tar.gz
+.cache
+node_modules
+.env
+.env.*
+admin-access.txt
+.dev-data
+.vercel

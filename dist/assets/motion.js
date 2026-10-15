@@ -128,6 +128,7 @@
   finePointer.addEventListener('change', configurePointer);
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', measure, { passive: true });
+  window.addEventListener('easyora:content-updated', measure);
   document.addEventListener('visibilitychange', () => {
     root.classList.toggle('tab-hidden', document.hidden);
     if (document.hidden) {

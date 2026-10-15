@@ -15,7 +15,7 @@ class Page(HTMLParser):
 pages={p.name:Page(p.read_text(encoding='utf-8')) for p in root.glob('*.html')}
 count=0
 for name,page in pages.items():
-    assert page.h1==1,(name,'heading')
+    assert page.h1==(2 if name=='admin.html' else 1),(name,'heading')
     for link in page.links:
         if link.startswith('https:'):continue
         parsed=urlsplit(link)
@@ -30,4 +30,4 @@ css=(root/'assets/style.css').read_text()
 assert 'prefers-reduced-motion:reduce' in css
 js=(root/'assets/main.js').read_text()
 assert not any(x in js for x in ['localStorage','sessionStorage','fetch(','XMLHttpRequest'])
-print(f'PASS: {len(pages)} pages served, {count} local links/assets/anchors resolved; one H1 per page, reduced-motion styles and no form transmission/storage.')
+print(f'PASS: {len(pages)} pages served, {count} local links/assets/anchors resolved; public heading structure, reduced-motion styles and no public brief transmission/storage.')

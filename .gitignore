@@ -5,3 +5,12 @@ __pycache__/
 .cache/
 tmp/
 .vercel/
+node_modules/
+.env
+.env.*
+!.env.example
+admin-access.txt
+.dev-data/
+
+.vercel
+.env*

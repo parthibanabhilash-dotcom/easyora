@@ -65,3 +65,28 @@ test('public portfolio uses text nodes, hides draft-only content, applies contac
   const next = [...dialog.querySelectorAll('button')].find(b => b.textContent.includes('Next')); next.click(); assert.equal(dialog.querySelector('.viewer-image').alt, 'Second image');
   dialog.querySelector('.viewer-close').click(); assert(!dialog.hasAttribute('open')); assert(!d.documentElement.classList.contains('gallery-open'));
 });
+
+test('settings conflict keeps the selected logo and resolves only edited fields after explicit confirmation', async t => {
+  const dom = new JSDOM(await readFile('dist/admin.html', 'utf8'), { url: 'https://easyora.vercel.app/admin', runScripts: 'outside-only' }); t.after(() => dom.window.close());
+  const w = dom.window, d = w.document; w.structuredClone = structuredClone; w.confirm = () => true;
+  const base = initialContent(); base.revision = randomUUID(); base.settings.email = 'old@example.com'; base.settings.logoId = randomUUID();
+  const latest = structuredClone(base); latest.revision = randomUUID(); latest.settings.phone = '+919876543210'; latest.settings.logoId = randomUUID();
+  let reads = 0, saves = 0, saved;
+  w.fetch = async (_, options) => {
+    if (!options.body) return { ok: true, json: async () => ({ configured: true, authenticated: true, csrfToken: 'csrf', content: structuredClone(reads++ ? latest : base) }) };
+    const input = JSON.parse(options.body);
+    assert.equal(input.action, 'save-settings');
+    if (++saves === 1) return { ok: false, status: 409, json: async () => ({ error: 'The logo changed in another session.', conflicts: ['logoId'] }) };
+    saved = input;
+    return { ok: true, json: async () => ({ content: { ...latest, settings: input.settings, revision: randomUUID() } }) };
+  };
+  w.eval(await readFile('dist/assets/admin.js', 'utf8')); await settle();
+  d.querySelector('[data-tab=settings]').click();
+  d.getElementById('reset-logo').click();
+  const form = d.getElementById('settings-form'); form.elements.namedItem('email').value = 'my-edit@example.com'; form.dispatchEvent(new w.Event('input', { bubbles: true }));
+  form.dispatchEvent(new w.Event('submit', { cancelable: true, bubbles: true })); await settle();
+  assert.equal(form.elements.namedItem('email').value, 'my-edit@example.com'); assert.equal(d.getElementById('logo-preview').getAttribute('src'), '/assets/easyora-logo.webp');
+  [...d.querySelectorAll('.conflict-actions button')].find(button => button.textContent === 'Save my edited fields').click(); await settle();
+  assert.equal(saved.revision, latest.revision); assert.equal(saved.settings.logoId, null); assert.equal(saved.settings.email, 'my-edit@example.com'); assert.equal(saved.settings.phone, latest.settings.phone);
+  assert.equal(form.elements.namedItem('phone').value, latest.settings.phone);
+});

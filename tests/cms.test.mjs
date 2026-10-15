@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { handlers } from '../lib/handlers.mjs';
 import { hashPassword, passwordMatches, createSession, readSession, COOKIE, HttpError } from '../lib/security.mjs';
-import { validateSettings, validateWork, initialContent, CATEGORIES } from '../lib/content.mjs';
+import { validateSettings, validateWork, initialContent, CATEGORIES, mutateContent } from '../lib/content.mjs';
 
 const PASSWORD = 'a-long-test-password-only';
 const env = { BLOB_READ_WRITE_TOKEN: 'test-only-token', ADMIN_EMAIL: 'owner@example.com', ADMIN_PASSWORD_HASH: hashPassword(PASSWORD), SESSION_SECRET: 'test-secret-only-'.repeat(4), SITE_ORIGIN: 'https://easyora.vercel.app' };
@@ -15,6 +15,7 @@ class MemoryStore {
   async readContent() { return this.document ? { value: structuredClone(this.document), etag: String(this.etag) } : null; }
   async writeContent(value, etag) { if ((this.document && etag !== String(this.etag)) || (!this.document && etag)) throw new HttpError(409, 'Conflict'); this.document = structuredClone(value); this.etag++; }
   async backup(value) { this.backups.push(structuredClone(value)); }
+  async readRevision(revision) { return structuredClone(this.backups.find(value => value.revision === revision) || null); }
   async imageExists(id) { return this.images.has(id); }
   async saveImage(id, bytes) { this.images.set(id, Buffer.from(bytes)); }
   async readImage(id) { const bytes = this.images.get(id); return bytes ? { stream: new ReadableStream({ start(c) { c.enqueue(bytes); c.close(); } }) } : null; }
@@ -86,7 +87,7 @@ test('HTTP lifecycle: authentication, upload, draft privacy, publishing, contact
   const visible = await (await request('content')).json(); assert.equal(visible.works.length, 1); assert.equal(visible.works[0].images[0].alt, 'Artwork detail');
   const publicImage = await fetch(origin + visible.works[0].images[0].url); assert.equal(publicImage.status, 200); assert.match(publicImage.headers.get('content-type'), /image\/webp/);
   assert.equal((await fetch(origin + visible.works[0].images[0].url + 'broken')).status, 401);
-  const conflict = await request('admin', { action: 'save-settings', revision: 'initial', settings: {} }); assert.equal(conflict.status, 409);
+  const conflict = await request('admin', { action: 'save-settings', revision: 'invalid-old-revision', settings: {} }); assert.equal(conflict.status, 409);
   const settings = { ...initialContent().settings, email: 'hello@example.com', whatsapp: '+919876543210', instagram: 'https://www.instagram.com/example', logoId: image.id };
   const update = await request('admin', { action: 'save-settings', revision, settings }); assert.equal(update.status, 200);
   saved = (await update.json()).content; revision = saved.revision;
@@ -104,4 +105,31 @@ test('missing production configuration fails closed', async () => {
   const response = { setHeader() {}, set statusCode(value) { status = value; }, end(value) { body = JSON.parse(value); } };
   await api.admin({ method: 'GET', headers: {} }, response); assert.equal(status, 200); assert.equal(body.configured, false); assert.equal(body.authenticated, false);
   await api.admin({ method: 'POST', headers: { origin: 'https://easyora.vercel.app' } }, response); assert.equal(status, 503);
+});
+
+test('stale logo and contact saves merge independent edits using archived revisions', async () => {
+  const store = new MemoryStore(), firstLogo = randomUUID(), secondLogo = randomUUID();
+  store.images.set(firstLogo, Buffer.from('image')); store.images.set(secondLogo, Buffer.from('image'));
+  const original = await mutateContent(store, { action: 'save-settings', revision: 'initial', settings: { ...initialContent().settings, email: 'hello@example.com', logoId: firstLogo } });
+  const otherTab = await mutateContent(store, { action: 'save-settings', revision: original.revision, settings: { ...original.settings, phone: '+919876543210' } });
+  const result = await mutateContent(store, { action: 'save-settings', revision: original.revision, settings: { ...original.settings, logoId: secondLogo } });
+  assert.equal(result.settings.phone, otherTab.settings.phone); assert.equal(result.settings.logoId, secondLogo);
+  const work = await mutateContent(store, { action: 'save-work', revision: result.revision, work: { title: 'New project', category: CATEGORIES[0], images: [{ id: firstLogo, alt: 'Cover' }] } });
+  const settings = await mutateContent(store, { action: 'save-settings', revision: result.revision, settings: { ...result.settings, location: 'Madurai' } });
+  assert.equal(settings.works[0].id, work.works[0].id); assert.equal(settings.settings.location, 'Madurai');
+  const latest = await mutateContent(store, { action: 'save-settings', revision: settings.revision, settings: { ...settings.settings, logoId: firstLogo } });
+  await assert.rejects(mutateContent(store, { action: 'save-settings', revision: settings.revision, settings: { ...settings.settings, logoId: null } }), error => error.status === 409 && error.conflicts.includes('logoId'));
+  assert.equal((await store.readContent()).value.settings.logoId, latest.settings.logoId);
+});
+
+test('conditional-write races retry and retain concurrent unrelated changes', async () => {
+  const store = new MemoryStore(), image = randomUUID(); store.images.set(image, Buffer.from('image'));
+  const original = await mutateContent(store, { action: 'save-settings', revision: 'initial', settings: initialContent().settings });
+  const write = store.writeContent.bind(store); let raced = false;
+  store.writeContent = async (value, etag) => {
+    if (!raced) { raced = true; store.document.settings.phone = '+919876543210'; store.document.revision = randomUUID(); store.etag++; throw new HttpError(409, 'Conflict'); }
+    return write(value, etag);
+  };
+  const result = await mutateContent(store, { action: 'save-settings', revision: original.revision, settings: { ...original.settings, logoId: image } });
+  assert.equal(result.settings.logoId, image); assert.equal(result.settings.phone, '+919876543210');
 });

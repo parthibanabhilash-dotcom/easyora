@@ -1,6 +1,6 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const state = { csrf: '', content: null, images: [], logoId: null, dirty: false, busy: false, configured: false, reauth: false };
+  const state = { csrf: '', content: null, images: [], logoId: null, settingsBase: null, dirty: false, busy: false, configured: false, reauth: false };
   function message(text, error = false) { $('admin-status').textContent = text; $('admin-status').classList.toggle('error', error); }
   function dirty(value = true) { state.dirty = value; }
   function busy(value) {
@@ -17,7 +17,7 @@
       const result = await response.json();
       if (!response.ok) {
         if (response.status === 401 && data && data.action !== 'login') { state.reauth = true; $('login-panel').hidden = false; $('dashboard').hidden = true; $('logout').hidden = true; }
-        throw new Error(result.error || 'Something went wrong. Please try again.');
+        const error = new Error(result.error || 'Something went wrong. Please try again.'); error.status = response.status; error.conflicts = result.conflicts; throw error;
       }
       return result;
     } catch (error) { if (error.name === 'AbortError') throw new Error('This request took too long. Reload the latest content before retrying a save.'); throw error; }
@@ -48,6 +48,7 @@
   }
   function fillSettings() {
     const settings = state.content.settings;
+    state.settingsBase = structuredClone(settings);
     for (const key of ['email', 'phone', 'whatsapp', 'location', 'instagram', 'facebook', 'youtube', 'linkedin']) $('settings-form').elements.namedItem(key).value = settings[key] || '';
     state.logoId = settings.logoId;
     $('logo-preview').src = state.logoId ? `/api/media?id=${state.logoId}` : '/assets/easyora-logo.webp';
@@ -81,9 +82,42 @@
   async function update(data, success) {
     if (state.busy) return;
     busy(true); message('Saving…');
-    try { const result = await api({ ...data, revision: state.content.revision }); state.content = result.content; renderWorks(); dirty(false); message(success); return true; }
-    catch (error) { message(error.message, true); return false; }
+    try { const result = await api({ ...data, revision: state.content.revision }); state.content = result.content; renderWorks(); if (data.action === 'save-settings') fillSettings(); dirty(false); message(success); return true; }
+    catch (error) {
+      message(error.message, true);
+      if (error.status === 409 && data.action === 'save-settings') {
+        const actions = element('div', 'conflict-actions');
+        actions.append(button('Save my edited fields', () => resolveSettings(true)), button('Load latest saved details', () => resolveSettings(false)));
+        $('admin-status').append(actions);
+      }
+      return false;
+    }
     finally { busy(false); }
+  }
+  function readSettings() {
+    const form = new FormData($('settings-form')), settings = { logoId: state.logoId };
+    for (const key of ['email', 'phone', 'whatsapp', 'location', 'instagram', 'facebook', 'youtube', 'linkedin']) settings[key] = form.get(key);
+    return settings;
+  }
+  async function resolveSettings(keepEdits) {
+    if (state.busy) return;
+    const desired = readSettings(), base = state.settingsBase || state.content.settings;
+    if (!window.confirm(keepEdits ? 'Save the fields you edited, replacing any conflicting saved values? Other saved details will be kept.' : 'Discard your unsaved contact and logo changes and load the latest saved details?')) return;
+    let merged;
+    busy(true);
+    try {
+      const latest = await api();
+      if (!latest.authenticated) { state.reauth = true; $('login-panel').hidden = false; $('dashboard').hidden = true; $('logout').hidden = true; throw new Error('Please sign in again before resolving this update.'); }
+      merged = { ...latest.content.settings };
+      if (keepEdits) for (const key of Object.keys(desired)) if (JSON.stringify(desired[key]) !== JSON.stringify(base[key])) merged[key] = desired[key];
+      state.content = latest.content; state.csrf = latest.csrfToken; fillSettings();
+      if (keepEdits) {
+        for (const key of ['email', 'phone', 'whatsapp', 'location', 'instagram', 'facebook', 'youtube', 'linkedin']) $('settings-form').elements.namedItem(key).value = merged[key] || '';
+        state.logoId = merged.logoId; $('logo-preview').src = merged.logoId ? `/api/media?id=${merged.logoId}` : '/assets/easyora-logo.webp'; dirty();
+      } else { dirty(false); message('Latest saved details loaded.'); }
+    } catch (error) { message(error.message, true); return; }
+    finally { busy(false); }
+    if (keepEdits) await update({ action: 'save-settings', settings: merged }, 'Your edited fields were saved. Other updates were kept.');
   }
   async function optimize(file) {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 15_000_000) throw new Error('Choose a JPG, PNG, or WebP image under 15 MB.');
@@ -151,9 +185,8 @@
   });
   $('reset-logo').addEventListener('click', () => { state.logoId = null; $('logo-preview').src = '/assets/easyora-logo.webp'; dirty(); message('Original logo selected. Save to apply it.'); });
   $('settings-form').addEventListener('submit', async event => {
-    event.preventDefault(); const form = new FormData(event.target), settings = { logoId: state.logoId };
-    for (const key of ['email', 'phone', 'whatsapp', 'location', 'instagram', 'facebook', 'youtube', 'linkedin']) settings[key] = form.get(key);
-    await update({ action: 'save-settings', settings }, 'Contact details and logo saved. Your website is up to date.');
+    event.preventDefault();
+    await update({ action: 'save-settings', settings: readSettings() }, 'Contact details and logo saved. Your website is up to date.');
   });
   window.addEventListener('beforeunload', event => { if (state.dirty || state.busy) { event.preventDefault(); event.returnValue = ''; } });
   api().then(result => { state.configured = result.configured; $('setup-message').hidden = result.configured; if (result.authenticated) signedIn(result); else message(result.configured ? '' : 'Admin setup is required before you can sign in.'); }).catch(error => message(error.message, true)).finally(() => busy(false));

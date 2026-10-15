@@ -14,7 +14,7 @@ Sign in at `/admin` using the owner credentials in the local, Git-ignored `admin
 
 Static pages and admin assets are in `dist/`. API handlers are in `api/`, with authentication, validation, and storage in `lib/`. Vercel functions and the private Blob store use Mumbai (`bom1`). Production uses Blob exclusively; there is no browser-local or ephemeral filesystem CMS fallback.
 
-`easyora/content.json` stores the project list and public settings. Reads use `useCache: false` for consistency. ETag-conditional writes and revision checks reject concurrent edits. Earlier content snapshots are retained privately under `easyora/backups/`.
+`easyora/content.json` stores the project list and public settings. Reads use `useCache: false` for consistency. ETag-conditional writes guard concurrent saves. A three-way merge uses the edited revision (including archived snapshots for already-open admin tabs) to preserve independent changes. Competing edits to the same field require explicit resolution; settings edits and uploaded logo selections stay in the form. Earlier snapshots are retained privately under `easyora/backups/`.
 
 Images are signature-checked, decoded, size-limited, resized, stripped of source metadata, and re-encoded as WebP by Sharp. SVG and animated uploads are rejected. Private media is served through authenticated admin previews or signed public URLs generated for the logo and published work. Unpublishing removes a project from the website; previously shared published image links and visitor copies cannot be retracted.
 
